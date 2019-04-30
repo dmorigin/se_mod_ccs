@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.572
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarrierControlSystem", "CarrierControlSystem\CarrierControlSystem.csproj", "{698AF770-24ED-44D9-B13A-D0FD051EB051}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{698AF770-24ED-44D9-B13A-D0FD051EB051}.Debug|x64.ActiveCfg = Debug|x64
+		{698AF770-24ED-44D9-B13A-D0FD051EB051}.Debug|x64.Build.0 = Debug|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {44CFDF99-CD73-45CB-AE45-469EF8C9BF19}
+	EndGlobalSection
+EndGlobal
