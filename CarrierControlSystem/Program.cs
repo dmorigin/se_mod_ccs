@@ -18,141 +18,68 @@ using VRageMath;
 
 namespace IngameScript
 {
-    /*!
-     * This script is a small version of the Flight Assist
-     * You find this script here: https://steamcommunity.com/sharedfiles/filedetails/?id=557293234
-     */
     partial class Program : MyGridProgram
     {
-        /*!
-         * Constances
-         */
-        public const double halfPi = Math.PI / 2;
-        public const double radToDeg = 180 / Math.PI;
-        public const double degToRad = Math.PI / 180;
+        const string VERSION = "0.2-beta";
 
-
-        /*!
-         * Class: GyroController
-         * 
-         * Description:
-         * Over this class it is possible to controll all gyroscopes in one way.
-         */
-        public class GyroController
-        {
-            const double minGyroRpmScale = 0.001;
-            const double gyroVelocityScale = 0.02;
-
-            private readonly List<IMyGyro> gyros;
-            private readonly IMyShipController cockpit;
-            public bool gyroOverride;
-            private Vector3D reference;
-            private Vector3D target;
-            public double angle;
-
-            public GyroController(List<IMyGyro> gyros, IMyShipController cockpit)
-            {
-                this.gyros = gyros;
-                this.cockpit = cockpit;
-            }
-
-            public void Tick()
-            {
-                UpdateGyroRpm();
-            }
-
-            public void SetGyroOverride(bool state)
-            {
-                gyroOverride = state;
-                for (int i = 0; i < gyros.Count; i++)
-                    gyros[i].GyroOverride = gyroOverride;
-            }
-
-            public void resetGyro()
-            {
-                foreach (var gyro in gyros)
-                {
-                    gyro.GyroOverride = false;
-                    gyro.Yaw = 0f;
-                    gyro.Pitch = 0f;
-                    gyro.Roll = 0f;
-                }
-            }
-
-            public void SetTargetOrientation(Vector3D setReference, Vector3D setTarget)
-            {
-                reference = setReference;
-                target = setTarget;
-                UpdateGyroRpm();
-            }
-
-            private void UpdateGyroRpm()
-            {
-                if (!gyroOverride) return;
-
-                foreach (var gyro in gyros)
-                {
-                    Matrix localOrientation;
-                    gyro.Orientation.GetMatrix(out localOrientation);
-                    var localReference = Vector3D.Transform(reference, MatrixD.Transpose(localOrientation));
-                    var localTarget = Vector3D.Transform(target, MatrixD.Transpose(gyro.WorldMatrix.GetOrientation()));
-
-                    var axis = Vector3D.Cross(localReference, localTarget);
-                    angle = axis.Length();
-                    angle = Math.Atan2(angle, Math.Sqrt(Math.Max(0.0, 1.0 - angle * angle)));
-                    if (Vector3D.Dot(localReference, localTarget) < 0)
-                        angle = Math.PI;
-                    axis.Normalize();
-                    axis *= Math.Max(minGyroRpmScale, gyro.GetMaximum<float>("Roll") * (angle / Math.PI) * gyroVelocityScale);
-
-                    gyro.Pitch = (float)-axis.X;
-                    gyro.Yaw = (float)-axis.Y;
-                    gyro.Roll = (float)-axis.Z;
-                }
-            }
-        }
-
+        // Constances
+        const double HalfPi = Math.PI / 2;
+        const double RadToDeg = 180 / Math.PI;
+        const double DegToRad = Math.PI / 180;
 
         // processing parameter
-        private List<IMyLandingGear> gears_;
-        private GyroController gyroController_;
-        private IMyShipController cockpit_;
-        private List<IMyTextPanel> textPanels_;
-        private double pitch_ = 0.0;
-        private double roll_ = 0.0;
-        private double worldSpeedForward_ = 0.0;
-        private double worldSpeedRight_ = 0.0;
-        private double worldSpeedUp_ = 0.0;
-        private double desiredPitch_ = 0.0;
-        private double desiredRoll_ = 0.0;
+        List<IMyLandingGear> gears_;
+        GyroController gyroController_;
+        IMyShipController cockpit_;
+        Statistics statistics_ = new Statistics();
+        LCDMessages messages_ = null;
+        double pitch_ = 0.0;
+        double roll_ = 0.0;
+        double worldSpeedForward_ = 0.0;
+        double worldSpeedRight_ = 0.0;
+        double worldSpeedUp_ = 0.0;
+        double desiredPitch_ = 0.0;
+        double desiredRoll_ = 0.0;
 
         // disable system
-        private bool disabled = true;
-        private bool landingInProgress_ = false;
-
-        // output buffer
-        private string outputLCDBuffer_ = "";
+        bool disabled_ = true;
+        bool landingInProgress_ = false;
+        bool naturalGravity_ = false;
 
         // configuration parameter
-        private double maxPitch_ = 0.0;
-        private double maxRoll_ = 0.0;
-        private int gyroResponsiveness_ = 8;
-        private double setSpeed_ = 0.01;
-        private string lcdTag_ = "[FA]";
-        private string version_ = "0.1";
+        double maxPitch_ = 0.0;
+        double maxRoll_ = 0.0;
+        int gyroResponsiveness_ = 8;
+        double setSpeed_ = 0.01;
+        string lcdTag_ = "[FA]";
+        UpdateFrequency updateFrequency_ = UpdateFrequency.Update10;
 
 
-        public Program()
+        void UpdateOrientationParameters()
         {
-            // find output lcd panels
-            textPanels_ = new List<IMyTextPanel>();
-            GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(textPanels_, block =>
-            {
-                if (block.CustomName.Contains(lcdTag_))
-                    return true;
-                return false;
-            });
+            Vector3D linearVelocity = Vector3D.Normalize(cockpit_.GetShipVelocities().LinearVelocity);
+            Vector3D gravity = -Vector3D.Normalize(cockpit_.GetNaturalGravity());
 
+            pitch_ = Math.Acos(Vector3D.Dot(cockpit_.WorldMatrix.Forward, gravity)) * RadToDeg;
+            roll_ = Math.Acos(Vector3D.Dot(cockpit_.WorldMatrix.Right, gravity)) * RadToDeg;
+
+            worldSpeedForward_ = Vector3D.Dot(linearVelocity, Vector3D.Cross(gravity, cockpit_.WorldMatrix.Right)) * cockpit_.GetShipSpeed();
+            worldSpeedRight_ = Vector3D.Dot(linearVelocity, Vector3D.Cross(gravity, cockpit_.WorldMatrix.Forward)) * cockpit_.GetShipSpeed();
+            worldSpeedUp_ = Vector3D.Dot(linearVelocity, gravity) * cockpit_.GetShipSpeed();
+        }
+
+        void ExecuteManeuver()
+        {
+            Matrix cockpitOrientation;
+            cockpit_.Orientation.GetMatrix(out cockpitOrientation);
+            var quatPitch = Quaternion.CreateFromAxisAngle(cockpitOrientation.Left, (float)(desiredPitch_ * DegToRad));
+            var quatRoll = Quaternion.CreateFromAxisAngle(cockpitOrientation.Backward, (float)(desiredRoll_ * DegToRad));
+            var reference = Vector3D.Transform(cockpitOrientation.Down, quatPitch * quatRoll);
+            gyroController_.SetTargetOrientation(reference, cockpit_.GetNaturalGravity());
+        }
+
+        bool initialize()
+        {
             // setup cockpit
             List<IMyShipController> cockpits = new List<IMyShipController>();
             GridTerminalSystem.GetBlocksOfType<IMyShipController>(cockpits, cockpit =>
@@ -177,93 +104,24 @@ namespace IngameScript
             gears_ = new List<IMyLandingGear>();
             GridTerminalSystem.GetBlocksOfType<IMyLandingGear>(gears_);
 
+            messages_ = new LCDMessages(this);
+            return true;
+        }
+
+
+        #region SE Implementation
+        public Program()
+        {
+            initialize();
+
             // Update frequency
-            Runtime.UpdateFrequency = UpdateFrequency.Update10;
+            Runtime.UpdateFrequency = updateFrequency_;
+            statistics_.setSensitivity(updateFrequency_);
         }
 
         public void Save()
         {
         }
-
-
-        private void UpdateOrientationParameters()
-        {
-            Vector3D linearVelocity = Vector3D.Normalize(cockpit_.GetShipVelocities().LinearVelocity);
-            Vector3D gravity = -Vector3D.Normalize(cockpit_.GetNaturalGravity());
-
-            pitch_ = Math.Acos(Vector3D.Dot(cockpit_.WorldMatrix.Forward, gravity)) * radToDeg;
-            roll_ = Math.Acos(Vector3D.Dot(cockpit_.WorldMatrix.Right, gravity)) * radToDeg;
-
-            worldSpeedForward_ = Vector3D.Dot(linearVelocity, Vector3D.Cross(gravity, cockpit_.WorldMatrix.Right)) * cockpit_.GetShipSpeed();
-            worldSpeedRight_ = Vector3D.Dot(linearVelocity, Vector3D.Cross(gravity, cockpit_.WorldMatrix.Forward)) * cockpit_.GetShipSpeed();
-            worldSpeedUp_ = Vector3D.Dot(linearVelocity, gravity) * cockpit_.GetShipSpeed();
-        }
-
-
-        private void PrintLCDLine(string line)
-        {
-            outputLCDBuffer_ += line + "\n";
-        }
-
-
-        private void ExecuteManeuver()
-        {
-            Matrix cockpitOrientation;
-            cockpit_.Orientation.GetMatrix(out cockpitOrientation);
-            var quatPitch = Quaternion.CreateFromAxisAngle(cockpitOrientation.Left, (float)(desiredPitch_ * degToRad));
-            var quatRoll = Quaternion.CreateFromAxisAngle(cockpitOrientation.Backward, (float)(desiredRoll_ * degToRad));
-            var reference = Vector3D.Transform(cockpitOrientation.Down, quatPitch * quatRoll);
-            gyroController_.SetTargetOrientation(reference, cockpit_.GetNaturalGravity());
-        }
-
-
-        private void PrintLCDString()
-        {
-            // do nothing if no panel is active
-            if (textPanels_.Count == 0)
-                return;
-
-            PrintLCDLine("    FLIGHT ASSIST V" + version_);
-            PrintLCDLine("----------------------------------------\n");
-
-            if (disabled == false)
-            {
-                // Status
-                if (landingInProgress_)
-                    PrintLCDLine("  MODE: In landing mode");
-                else
-                    PrintLCDLine("  MODE: In flight mode");
-
-                if (setSpeed_ > 0)
-                    PrintLCDLine("  SET SPEED: " + setSpeed_ + "m/s");
-                else
-                    PrintLCDLine("");
-
-                // velocity
-                string velocityString = " X:" + worldSpeedForward_.ToString("+000;\u2013000");
-                velocityString += " Y:" + worldSpeedRight_.ToString("+000;\u2013000");
-                velocityString += " Z:" + worldSpeedUp_.ToString("+000;\u2013000");
-                PrintLCDLine("\n Velocity (m/s)+\n" + velocityString);
-
-                // orientation
-                PrintLCDLine("\n Orientation");
-                PrintLCDLine(" Pitch: " + (90 - pitch_).ToString("+00;\u201300") + "° | Roll: " + ((90 - roll_) * -1).ToString("+00;\u201300") + "°");
-            }
-            else
-            {
-                PrintLCDLine("<= SYSTEM DISABLED =>");
-            }
-
-            // print to lcd panel
-            foreach (var panel in textPanels_)
-            {
-                panel.ShowPublicTextOnScreen();
-                panel.WritePublicText(outputLCDBuffer_, false);
-            }
-
-            outputLCDBuffer_ = "";
-        }
-
 
         public void Main(string argument, UpdateType updateSource)
         {
@@ -271,11 +129,11 @@ namespace IngameScript
             if ((updateSource & UpdateType.Trigger) != 0 || (updateSource & UpdateType.Terminal) != 0)
             {
                 if (argument.Contains("enable"))
-                    disabled = false;
+                    disabled_ = false;
                 else if (argument.Contains("disable"))
                 {
-                    gyroController_.resetGyro();
-                    disabled = true;
+                    gyroController_.ResetGyro();
+                    disabled_ = true;
                 }
             }
 
@@ -296,12 +154,15 @@ namespace IngameScript
                 // check natural gravity
                 if (cockpit_.GetNaturalGravity().Length() == 0.0)
                 {
-                    Echo("No natural gravity found. Execute disabled!");
+                    naturalGravity_ = false;
                     gyroController_.SetGyroOverride(false);
                     return;
                 }
+                else
+                    naturalGravity_ = true;
 
-                if (landingInProgress_ == false && disabled == false)
+
+                if (landingInProgress_ == false && disabled_ == false)
                 {
                     // update all orientation parameters
                     UpdateOrientationParameters();
@@ -319,18 +180,20 @@ namespace IngameScript
                     else
                     {
                         gyroController_.SetGyroOverride(true);
-                        desiredPitch_ = Math.Atan((worldSpeedForward_ - setSpeed_) / gyroResponsiveness_) / halfPi * maxPitch_;
-                        desiredRoll_ = Math.Atan(worldSpeedRight_ / gyroResponsiveness_) / halfPi * maxRoll_;
+                        desiredPitch_ = Math.Atan((worldSpeedForward_ - setSpeed_) / gyroResponsiveness_) / HalfPi * maxPitch_;
+                        desiredRoll_ = Math.Atan(worldSpeedRight_ / gyroResponsiveness_) / HalfPi * maxRoll_;
                     }
 
 
-                    if (gyroController_.gyroOverride)
+                    if (gyroController_.GyroOverride)
                         ExecuteManeuver();
                 }
             }
 
             // generate lcd output and print them on
-            PrintLCDString();
+            messages_.Flush();
+            statistics_.tick(this);
         }
+        #endregion // SE Implementation
     }
 }
