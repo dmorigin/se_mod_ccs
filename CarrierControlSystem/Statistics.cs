@@ -76,14 +76,18 @@ namespace IngameScript
 
                 if (nextUpdate_ <= ticks_)
                 {
+                    string mode = app.landingInProgress_ ? "Landing" : (app.naturalGravity_ ? "Flight" : "No Gravity");
+
                     // print statistic
                     sb_.Clear();
-                    sb_.AppendLine($"Visual Information System ({Program.VERSION})\n=============================");
+                    sb_.AppendLine($"Carrier Control System ({Program.VERSION})\n=============================");
                     sb_.AppendLine($"Running: {getRunSymbol()}");
                     sb_.AppendLine($"Time: {ticks_}");
                     sb_.AppendLine($"Ticks: {ticksSinceLastUpdate_}");
                     sb_.AppendLine($"Avg Time/tick: {(timeSinceLastUpdate_ / ticksSinceLastUpdate_).ToString("#0.0#####")}ms");
                     sb_.AppendLine($"Avg Inst/tick: {(instructionCountLastUpdate_ / (double)ticksSinceLastUpdate_).ToString("#0.00")}/{app.Runtime.MaxInstructionCount}");
+                    sb_.AppendLine($"Enabled: {!app.disabled_}");
+                    sb_.AppendLine($"Mode: {mode}");
 
                     if (exception_ != "")
                         sb_.Append($"\nException:\n{exception_}\n");

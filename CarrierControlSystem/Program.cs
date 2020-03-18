@@ -20,7 +20,7 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
-        const string VERSION = "0.2-beta";
+        const string VERSION = "v0.3-beta";
 
         // Constances
         const double HalfPi = Math.PI / 2;
